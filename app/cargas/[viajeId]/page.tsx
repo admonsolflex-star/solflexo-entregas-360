@@ -33,6 +33,7 @@ type RemisionCarga = {
 type CapturaCarga = {
   key: string;
   remision_id: string;
+  item_id: string;
   producto_id: string;
   cajas_remision: number;
   bobinas_remision: number;
@@ -70,8 +71,8 @@ type RelacionViajeRemision = {
     | {
         id: string;
         folio: string;
-        destino: string;
-        clientes: { nombre: string }[] | { nombre: string } | null;
+        destino: string | null;
+        clientes: { nombre: string | null }[] | { nombre: string | null } | null;
         remision_items: {
           id: string;
           producto_id: string;
@@ -79,17 +80,25 @@ type RelacionViajeRemision = {
           bobinas: number | null;
           kilos: number | null;
           piezas: number | null;
-          productos: { nombre: string }[] | { nombre: string } | null;
+          productos:
+            | { nombre: string | null }[]
+            | { nombre: string | null }
+            | null;
         }[];
       }
     | null;
 };
 
+function obtenerParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
 export default function CapturaCargaPage() {
   const router = useRouter();
   const params = useParams();
 
-  const viajeId = params.viajeId as string;
+  const viajeId = obtenerParam(params.viajeId);
 
   const [viaje, setViaje] = useState<Viaje | null>(null);
   const [remisiones, setRemisiones] = useState<RemisionCarga[]>([]);
@@ -105,6 +114,7 @@ export default function CapturaCargaPage() {
     if (viajeId) {
       cargarDatos();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viajeId]);
 
   async function cargarDatos() {
@@ -115,11 +125,14 @@ export default function CapturaCargaPage() {
       .from("viajes")
       .select("id, folio, fecha, chofer_nombre, camion, ruta, estado")
       .eq("id", viajeId)
-      .single();
+      .maybeSingle();
 
     if (viajeError || !viajeData) {
       console.error("Error cargando viaje:", viajeError);
       setErrorMsg("No se encontró el viaje.");
+      setViaje(null);
+      setRemisiones([]);
+      setCapturas([]);
       setLoading(false);
       return;
     }
@@ -157,6 +170,8 @@ export default function CapturaCargaPage() {
     if (relacionesError) {
       console.error("Error cargando remisiones del viaje:", relacionesError);
       setErrorMsg("No se pudieron cargar las remisiones del viaje.");
+      setRemisiones([]);
+      setCapturas([]);
       setLoading(false);
       return;
     }
@@ -205,7 +220,7 @@ export default function CapturaCargaPage() {
           remision_id: remision.id,
           remision_folio: remision.folio,
           cliente_nombre: obtenerCliente(remision.clientes),
-          destino: remision.destino,
+          destino: remision.destino || "-",
           item_id: item.id,
           producto_id: item.producto_id,
           producto_nombre: obtenerProducto(item.productos),
@@ -228,8 +243,9 @@ export default function CapturaCargaPage() {
         );
 
         return {
-          key: `${fila.remision_id}-${fila.producto_id}`,
+          key: `${fila.remision_id}-${fila.item_id}-${fila.producto_id}`,
           remision_id: fila.remision_id,
+          item_id: fila.item_id,
           producto_id: fila.producto_id,
 
           cajas_remision: cargaExistente
@@ -267,7 +283,7 @@ export default function CapturaCargaPage() {
   }
 
   function obtenerCliente(
-    clientes: { nombre: string }[] | { nombre: string } | null
+    clientes: { nombre: string | null }[] | { nombre: string | null } | null
   ) {
     if (Array.isArray(clientes)) {
       return clientes[0]?.nombre || "-";
@@ -277,7 +293,7 @@ export default function CapturaCargaPage() {
   }
 
   function obtenerProducto(
-    productos: { nombre: string }[] | { nombre: string } | null
+    productos: { nombre: string | null }[] | { nombre: string | null } | null
   ) {
     if (Array.isArray(productos)) {
       return productos[0]?.nombre || "-";
@@ -336,11 +352,23 @@ export default function CapturaCargaPage() {
 
     const date = new Date(`${fecha}T00:00:00`);
 
+    if (Number.isNaN(date.getTime())) {
+      return fecha;
+    }
+
     return new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
     }).format(date);
+  }
+
+  function formatNumber(value: number | string | null | undefined) {
+    const number = Number(value || 0);
+
+    return new Intl.NumberFormat("es-MX", {
+      maximumFractionDigits: 3,
+    }).format(number);
   }
 
   function totalDiferencias() {
@@ -356,6 +384,18 @@ export default function CapturaCargaPage() {
 
     setSaving(true);
     setErrorMsg("");
+
+    if (!viajeId) {
+      setErrorMsg("No se encontró el identificador del viaje.");
+      setSaving(false);
+      return;
+    }
+
+    if (capturas.length === 0) {
+      setErrorMsg("Este viaje no tiene mercancía para cargar.");
+      setSaving(false);
+      return;
+    }
 
     const capturaConNegativos = capturas.find((captura) =>
       tieneNegativos(captura)
@@ -428,6 +468,11 @@ export default function CapturaCargaPage() {
 
     if (viajeError) {
       console.error("Error actualizando viaje:", viajeError);
+      setErrorMsg(
+        "Se guardó la carga, pero no se pudo actualizar el estado del viaje."
+      );
+      setSaving(false);
+      return;
     }
 
     for (const remisionId of remisionIds) {
@@ -448,6 +493,11 @@ export default function CapturaCargaPage() {
 
       if (remisionError) {
         console.error("Error actualizando remisión:", remisionError);
+        setErrorMsg(
+          "Se guardó la carga, pero no se pudo actualizar el estado de una o más remisiones."
+        );
+        setSaving(false);
+        return;
       }
     }
 
@@ -542,7 +592,8 @@ export default function CapturaCargaPage() {
                 <span className="font-bold">{totalRemisionesUnicas()}</span>
               </p>
               <p className="text-sm text-slate-700">
-                Productos: <span className="font-bold">{remisiones.length}</span>
+                Productos:{" "}
+                <span className="font-bold">{remisiones.length}</span>
               </p>
               <p className="text-sm text-slate-700">
                 Diferencias:{" "}
@@ -624,10 +675,9 @@ export default function CapturaCargaPage() {
 
                 <tbody className="divide-y divide-slate-100">
                   {remisiones.map((fila) => {
-                    const captura = capturas.find(
-                      (item) =>
-                        item.key === `${fila.remision_id}-${fila.producto_id}`
-                    );
+                    const key = `${fila.remision_id}-${fila.item_id}-${fila.producto_id}`;
+
+                    const captura = capturas.find((item) => item.key === key);
 
                     if (!captura) return null;
 
@@ -635,7 +685,7 @@ export default function CapturaCargaPage() {
 
                     return (
                       <tr
-                        key={`${fila.remision_id}-${fila.producto_id}`}
+                        key={key}
                         className={
                           diferencia ? "bg-red-50/50" : "hover:bg-slate-50"
                         }
@@ -656,7 +706,7 @@ export default function CapturaCargaPage() {
                         </td>
 
                         <td className="px-4 py-3 text-right text-slate-600">
-                          {captura.cajas_remision}
+                          {formatNumber(captura.cajas_remision)}
                         </td>
 
                         <td className="px-4 py-3">
@@ -676,7 +726,7 @@ export default function CapturaCargaPage() {
                         </td>
 
                         <td className="px-4 py-3 text-right text-slate-600">
-                          {captura.bobinas_remision}
+                          {formatNumber(captura.bobinas_remision)}
                         </td>
 
                         <td className="px-4 py-3">
@@ -696,7 +746,7 @@ export default function CapturaCargaPage() {
                         </td>
 
                         <td className="px-4 py-3 text-right text-slate-600">
-                          {captura.kilos_remision}
+                          {formatNumber(captura.kilos_remision)}
                         </td>
 
                         <td className="px-4 py-3">
@@ -717,7 +767,7 @@ export default function CapturaCargaPage() {
                         </td>
 
                         <td className="px-4 py-3 text-right text-slate-600">
-                          {captura.piezas_remision}
+                          {formatNumber(captura.piezas_remision)}
                         </td>
 
                         <td className="px-4 py-3">

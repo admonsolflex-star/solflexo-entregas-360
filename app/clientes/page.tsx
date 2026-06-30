@@ -9,8 +9,8 @@ import { canAccessModule, canCreate } from "@/lib/auth/permissions";
 
 type Cliente = {
   id: string;
-  codigo_cliente: string;
-  nombre: string;
+  codigo_cliente: string | null;
+nombre: string | null;
   rfc: string | null;
   correo: string | null;
   telefono: string | null;
@@ -57,21 +57,31 @@ export default function ClientesPage() {
     setLoading(false);
   }
 
-  function origenTexto(origen: string | null) {
-    if (origen === "produccion") {
-      return "Producción 360";
-    }
+  function esOrigenProduccion(origen: string | null) {
+  const valor = String(origen || "").toUpperCase();
 
-    return "Manual";
+  return (
+    valor === "PRODUCCION" ||
+    valor === "PRODUCCION_360" ||
+    valor === "PRODUCCIÓN 360"
+  );
+}
+
+function origenTexto(origen: string | null) {
+  if (esOrigenProduccion(origen)) {
+    return "Producción 360";
   }
 
-  function origenClase(origen: string | null) {
-    if (origen === "produccion") {
-      return "bg-blue-50 text-blue-700";
-    }
+  return "Manual";
+}
 
-    return "bg-slate-100 text-slate-700";
+function origenClase(origen: string | null) {
+  if (esOrigenProduccion(origen)) {
+    return "bg-blue-50 text-blue-700";
   }
+
+  return "bg-slate-100 text-slate-700";
+}
 
   function activoClase(activo: boolean) {
     if (activo) {
@@ -194,7 +204,7 @@ export default function ClientesPage() {
                       </td>
 
                       <td className="px-6 py-4 font-medium text-slate-800">
-                        {cliente.nombre}
+                        {cliente.nombre || "-"}
                       </td>
 
                       <td className="px-6 py-4 text-slate-600">

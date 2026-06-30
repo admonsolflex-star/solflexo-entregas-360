@@ -329,38 +329,53 @@ export default function NuevoViajePage() {
       return;
     }
 
-    const relaciones = remisionesSeleccionadas.map((remisionId) => ({
-      viaje_id: viajeCreado.id,
-      remision_id: remisionId,
-    }));
+   const relaciones = remisionesSeleccionadas.map((remisionId) => ({
+  viaje_id: viajeCreado.id,
+  remision_id: remisionId,
+}));
 
-    const { error: relacionesError } = await supabase
-      .from("viaje_remisiones")
-      .insert(relaciones);
+const { error: relacionesError } = await supabase
+  .from("viaje_remisiones")
+  .insert(relaciones);
 
-    if (relacionesError) {
-      console.error("Error relacionando remisiones:", relacionesError);
-      setErrorMsg(
-        "Se creó el viaje, pero no se pudieron ligar las remisiones."
-      );
-      setSaving(false);
-      return;
-    }
+if (relacionesError) {
+  console.error("Error relacionando remisiones:", relacionesError);
 
-    const { error: remisionesError } = await supabase
-      .from("remisiones")
-      .update({
-        estado: "preparada",
-      })
-      .in("id", remisionesSeleccionadas);
+  await supabase.from("viajes").delete().eq("id", viajeCreado.id);
 
-    if (remisionesError) {
-      console.error("Error actualizando remisiones:", remisionesError);
-    }
+  setErrorMsg(
+    "No se pudieron ligar las remisiones. Se canceló la creación del viaje para evitar un viaje vacío."
+  );
+  setSaving(false);
+  return;
+}
 
-    setSaving(false);
-    router.push("/viajes");
-  }
+const { error: remisionesError } = await supabase
+  .from("remisiones")
+  .update({
+    estado: "preparada",
+  })
+  .in("id", remisionesSeleccionadas);
+
+if (remisionesError) {
+  console.error("Error actualizando remisiones:", remisionesError);
+
+  await supabase
+    .from("viaje_remisiones")
+    .delete()
+    .eq("viaje_id", viajeCreado.id);
+
+  await supabase.from("viajes").delete().eq("id", viajeCreado.id);
+
+  setErrorMsg(
+    "No se pudieron actualizar las remisiones. Se canceló la creación del viaje para evitar inconsistencias."
+  );
+  setSaving(false);
+  return;
+}
+
+setSaving(false);
+router.push("/viajes");
 
   return (
     <main className="min-h-screen bg-slate-100">
@@ -654,4 +669,5 @@ function CampoTexto({
       />
     </div>
   );
+}
 }

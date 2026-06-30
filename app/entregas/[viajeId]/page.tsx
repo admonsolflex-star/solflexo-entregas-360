@@ -18,19 +18,19 @@ type Viaje = {
 
 type ClienteRelacion =
   | {
-      nombre: string;
+      nombre: string | null;
     }[]
   | {
-      nombre: string;
+      nombre: string | null;
     }
   | null;
 
 type ProductoRelacion =
   | {
-      nombre: string;
+      nombre: string | null;
     }[]
   | {
-      nombre: string;
+      nombre: string | null;
     }
   | null;
 
@@ -47,7 +47,7 @@ type CargaItem = {
   remisiones:
     | {
         folio: string;
-        destino: string;
+        destino: string | null;
         clientes: ClienteRelacion;
       }
     | null;
@@ -112,11 +112,16 @@ type CapturaEntrega = {
   observaciones: string;
 };
 
+function obtenerParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
 export default function RegistrarEntregaPage() {
   const router = useRouter();
   const params = useParams();
 
-  const viajeId = params.viajeId as string;
+  const viajeId = obtenerParam(params.viajeId);
 
   const [viaje, setViaje] = useState<Viaje | null>(null);
   const [capturas, setCapturas] = useState<CapturaEntrega[]>([]);
@@ -136,6 +141,7 @@ export default function RegistrarEntregaPage() {
     if (viajeId) {
       cargarDatos();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viajeId]);
 
   async function cargarDatos() {
@@ -146,11 +152,13 @@ export default function RegistrarEntregaPage() {
       .from("viajes")
       .select("id, folio, fecha, chofer_nombre, camion, ruta, estado")
       .eq("id", viajeId)
-      .single();
+      .maybeSingle();
 
     if (viajeError || !viajeData) {
       console.error("Error cargando viaje:", viajeError);
       setErrorMsg("No se encontró el viaje.");
+      setViaje(null);
+      setCapturas([]);
       setLoading(false);
       return;
     }
@@ -187,6 +195,7 @@ export default function RegistrarEntregaPage() {
     if (cargaError) {
       console.error("Error cargando carga del viaje:", cargaError);
       setErrorMsg("No se pudo cargar la mercancía cargada del viaje.");
+      setCapturas([]);
       setLoading(false);
       return;
     }
@@ -272,7 +281,10 @@ export default function RegistrarEntregaPage() {
         : 0;
 
       const totalEntregado =
-        cajasEntregadas + bobinasEntregadas + kilosEntregados + piezasEntregadas;
+        cajasEntregadas +
+        bobinasEntregadas +
+        kilosEntregados +
+        piezasEntregadas;
 
       const totalNoEntregado =
         cajasNoEntregadas +
@@ -398,6 +410,10 @@ export default function RegistrarEntregaPage() {
     if (!fecha) return "-";
 
     const date = new Date(`${fecha}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) {
+      return fecha;
+    }
 
     return new Intl.DateTimeFormat("es-MX", {
       day: "2-digit",
@@ -652,7 +668,21 @@ export default function RegistrarEntregaPage() {
     setSaving(true);
     setErrorMsg("");
 
-    const capturaSinCuadrar = capturas.find((captura) => !validarCuadre(captura));
+    if (!viajeId) {
+      setErrorMsg("No se encontró el identificador del viaje.");
+      setSaving(false);
+      return;
+    }
+
+    if (capturas.length === 0) {
+      setErrorMsg("Este viaje no tiene mercancía cargada.");
+      setSaving(false);
+      return;
+    }
+
+    const capturaSinCuadrar = capturas.find(
+      (captura) => !validarCuadre(captura)
+    );
 
     if (capturaSinCuadrar) {
       setErrorMsg(
@@ -755,6 +785,11 @@ export default function RegistrarEntregaPage() {
 
       if (bitacoraError) {
         console.error("Error guardando bitácora de edición:", bitacoraError);
+        setErrorMsg(
+          "Se guardó la entrega, pero no se pudo guardar la bitácora de edición."
+        );
+        setSaving(false);
+        return;
       }
     }
 
@@ -782,6 +817,11 @@ export default function RegistrarEntregaPage() {
 
       if (remisionError) {
         console.error("Error actualizando remisión:", remisionError);
+        setErrorMsg(
+          "Se guardó la entrega, pero no se pudo actualizar el estado de una o más remisiones."
+        );
+        setSaving(false);
+        return;
       }
     }
 
@@ -794,6 +834,11 @@ export default function RegistrarEntregaPage() {
 
     if (viajeError) {
       console.error("Error actualizando viaje:", viajeError);
+      setErrorMsg(
+        "Se guardó la entrega, pero no se pudo actualizar el estado del viaje."
+      );
+      setSaving(false);
+      return;
     }
 
     setSaving(false);

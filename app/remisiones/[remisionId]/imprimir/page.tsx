@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 type ClienteDato = {
-  nombre: string;
+  nombre: string | null;
+  codigo_cliente: string | null;
   rfc: string | null;
   direccion: string | null;
   direccion_fiscal: string | null;
@@ -14,14 +15,19 @@ type ClienteDato = {
   estado: string | null;
   codigo_postal: string | null;
   telefono: string | null;
+  correo: string | null;
+  origen: string | null;
+  produccion_cliente_id: string | null;
 };
 
 type ClienteRelacion = ClienteDato[] | ClienteDato | null;
 
 type ProductoDato = {
-  nombre: string;
-  codigo_producto: string;
-  unidad_principal: string;
+  nombre: string | null;
+  codigo_producto: string | null;
+  unidad_principal: string | null;
+  origen: string | null;
+  produccion_producto_id: string | null;
 };
 
 type ProductoRelacion = ProductoDato[] | ProductoDato | null;
@@ -29,9 +35,9 @@ type ProductoRelacion = ProductoDato[] | ProductoDato | null;
 type Remision = {
   id: string;
   folio: string;
-  fecha_remision: string;
+  fecha_remision: string | null;
   fecha_programada_entrega: string | null;
-  destino: string;
+  destino: string | null;
   direccion_entrega: string | null;
   ciudad_entrega: string | null;
   estado_entrega: string | null;
@@ -41,7 +47,15 @@ type Remision = {
   orden_compra_folio: string | null;
   orden_produccion_folio: string | null;
   observaciones: string | null;
+
+  produccion_order_id: string | null;
+  produccion_order_folio: string | null;
+  produccion_finished_good_id: string | null;
+  integration_source: string | null;
+  integration_created_at: string | null;
+
   clientes: ClienteRelacion;
+
   remision_items: {
     id: string;
     cajas: number | null;
@@ -49,13 +63,20 @@ type Remision = {
     kilos: number | null;
     piezas: number | null;
     descripcion_extra: string | null;
+    produccion_product_id: string | null;
+    produccion_finished_good_id: string | null;
     productos: ProductoRelacion;
   }[];
 };
 
+function obtenerParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
 export default function ImprimirRemisionPage() {
   const params = useParams();
-  const remisionId = params.remisionId as string;
+  const remisionId = obtenerParam(params.remisionId);
 
   const [remision, setRemision] = useState<Remision | null>(null);
   const [loading, setLoading] = useState(true);
@@ -65,6 +86,7 @@ export default function ImprimirRemisionPage() {
     if (remisionId) {
       cargarRemision();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remisionId]);
 
   async function cargarRemision() {
@@ -89,15 +111,24 @@ export default function ImprimirRemisionPage() {
         orden_compra_folio,
         orden_produccion_folio,
         observaciones,
+        produccion_order_id,
+        produccion_order_folio,
+        produccion_finished_good_id,
+        integration_source,
+        integration_created_at,
         clientes (
           nombre,
+          codigo_cliente,
           rfc,
           direccion,
           direccion_fiscal,
           ciudad,
           estado,
           codigo_postal,
-          telefono
+          telefono,
+          correo,
+          origen,
+          produccion_cliente_id
         ),
         remision_items (
           id,
@@ -106,16 +137,20 @@ export default function ImprimirRemisionPage() {
           kilos,
           piezas,
           descripcion_extra,
+          produccion_product_id,
+          produccion_finished_good_id,
           productos (
             nombre,
             codigo_producto,
-            unidad_principal
+            unidad_principal,
+            origen,
+            produccion_producto_id
           )
         )
       `
       )
       .eq("id", remisionId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       console.error("Error cargando remisión:", error);
@@ -172,6 +207,13 @@ export default function ImprimirRemisionPage() {
 
           <div className="flex gap-3">
             <Link
+              href={`/remisiones/${remision.id}`}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Ver detalle
+            </Link>
+
+            <Link
               href="/remisiones"
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
@@ -197,9 +239,9 @@ export default function ImprimirRemisionPage() {
       <style jsx global>{`
         @media print {
           @page {
-  size: letter;
-  margin: 5mm;
-}
+            size: letter;
+            margin: 5mm;
+          }
 
           body {
             background: white !important;
@@ -210,15 +252,15 @@ export default function ImprimirRemisionPage() {
           }
 
           .print-page {
-  page-break-after: always;
-  box-shadow: none !important;
-  border: none !important;
-  margin: 0 auto !important;
-  width: 100% !important;
-  min-height: auto !important;
-transform: scale(0.94);
-  transform-origin: top center;
-}
+            page-break-after: always;
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 auto !important;
+            width: 100% !important;
+            min-height: auto !important;
+            transform: scale(0.94);
+            transform-origin: top center;
+          }
 
           .print-page:last-child {
             page-break-after: auto;
@@ -241,13 +283,21 @@ function RemisionImpresa({
     remision.fecha_programada_entrega || remision.fecha_remision
   );
 
+  const opFolio =
+    remision.produccion_order_folio || remision.orden_produccion_folio || "-";
+
   return (
-   <div className="print-page mx-auto max-w-[820px] bg-white p-4 shadow-sm">
-      <div className="mb-2 text-right text-xs font-bold text-slate-500">
-        {copia}
+    <div className="print-page mx-auto max-w-[820px] bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-500">
+        <span>
+          {remision.integration_source === "PRODUCCION_360"
+            ? "Origen: Producción 360"
+            : "Origen: Manual"}
+        </span>
+        <span>{copia}</span>
       </div>
 
-  <div className="grid grid-cols-[1fr_2fr_140px] gap-3">
+      <div className="grid grid-cols-[1fr_2fr_140px] gap-3">
         <div className="flex items-center">
           <div>
             <div className="text-xl font-bold text-blue-900">Soluciones</div>
@@ -270,7 +320,8 @@ function RemisionImpresa({
             Centro C.P. 59600 Zamora, Michoacán, México
           </p>
         </div>
-<div className="h-[88px] overflow-hidden rounded-xl border-2 border-blue-800 text-center">
+
+        <div className="h-[88px] overflow-hidden rounded-xl border-2 border-blue-800 text-center">
           <div className="rounded-t-lg bg-blue-800 py-2 text-sm font-bold text-white">
             REMISIÓN
           </div>
@@ -279,64 +330,65 @@ function RemisionImpresa({
           </div>
         </div>
       </div>
-<div className="mt-4 grid grid-cols-[1fr_150px] gap-4">
- <div className="h-[92px] overflow-hidden rounded-xl border-2 border-blue-800">
-    <div className="grid grid-cols-[95px_1fr] gap-y-1 p-3 text-[12px] leading-tight">
-      <div className="font-bold text-slate-700">CLIENTE:</div>
-      <div className="truncate">{cliente?.nombre || "-"}</div>
 
-      <div className="font-bold text-slate-700">DIRECCIÓN:</div>
-      <div className="truncate">{domicilioFiscalCliente(remision)}</div>
+      <div className="mt-4 grid grid-cols-[1fr_150px] gap-4">
+        <div className="h-[92px] overflow-hidden rounded-xl border-2 border-blue-800">
+          <div className="grid grid-cols-[95px_1fr] gap-y-1 p-3 text-[12px] leading-tight">
+            <div className="font-bold text-slate-700">CLIENTE:</div>
+            <div className="truncate">
+              {cliente?.codigo_cliente
+                ? `${cliente.codigo_cliente} - ${cliente.nombre || "-"}`
+                : cliente?.nombre || "-"}
+            </div>
 
-      <div className="font-bold text-slate-700">CIUDAD:</div>
-      <div className="truncate">{ciudadFiscalCliente(remision)}</div>
+            <div className="font-bold text-slate-700">DIRECCIÓN:</div>
+            <div className="truncate">{domicilioFiscalCliente(remision)}</div>
 
-      <div className="font-bold text-slate-700">RFC:</div>
-      <div className="truncate">{cliente?.rfc || "-"}</div>
-    </div>
-  </div>
+            <div className="font-bold text-slate-700">CIUDAD:</div>
+            <div className="truncate">{ciudadFiscalCliente(remision)}</div>
 
-  <div className="h-[110px] overflow-hidden rounded-xl border-2 border-blue-800">
-    <div className="grid grid-cols-3 bg-blue-800 text-center text-xs font-bold text-white">
-      <div className="border-r border-white py-2">DÍA</div>
-      <div className="border-r border-white py-2">MES</div>
-      <div className="py-2">AÑO</div>
-    </div>
+            <div className="font-bold text-slate-700">RFC:</div>
+            <div className="truncate">{cliente?.rfc || "-"}</div>
+          </div>
+        </div>
 
-    <div className="grid grid-cols-3 text-center text-sm font-bold">
-      <div className="border-r border-blue-800 py-4">{fecha.dia}</div>
-<div className="border-r border-blue-800 py-4">{fecha.mes}</div>
-<div className="py-4">{fecha.anio}</div>
-    </div>
-  </div>
-</div>
+        <div className="h-[110px] overflow-hidden rounded-xl border-2 border-blue-800">
+          <div className="grid grid-cols-3 bg-blue-800 text-center text-xs font-bold text-white">
+            <div className="border-r border-white py-2">DÍA</div>
+            <div className="border-r border-white py-2">MES</div>
+            <div className="py-2">AÑO</div>
+          </div>
 
-<div className="mt-2 overflow-hidden rounded-xl border-2 border-blue-800">
-  <div className="bg-blue-800 px-3 py-2 text-center text-sm font-bold text-white">
-    ENTREGAR EN:
-  </div>
-
-  <div className="h-[55px] overflow-hidden p-2 text-[11px] leading-tight">
-    <div className="truncate font-semibold">
-      {remision.destino || "-"}
-    </div>
-
-    <div className="truncate">
-      {domicilioEntrega(remision)}
-    </div>
-
-    {(remision.contacto_entrega || remision.telefono_entrega) && (
-      <div className="truncate">
-        {remision.contacto_entrega
-          ? `Contacto: ${remision.contacto_entrega}`
-          : ""}
-        {remision.telefono_entrega
-          ? ` Tel: ${remision.telefono_entrega}`
-          : ""}
+          <div className="grid grid-cols-3 text-center text-sm font-bold">
+            <div className="border-r border-blue-800 py-4">{fecha.dia}</div>
+            <div className="border-r border-blue-800 py-4">{fecha.mes}</div>
+            <div className="py-4">{fecha.anio}</div>
+          </div>
+        </div>
       </div>
-    )}
-  </div>
-</div>
+
+      <div className="mt-2 overflow-hidden rounded-xl border-2 border-blue-800">
+        <div className="bg-blue-800 px-3 py-2 text-center text-sm font-bold text-white">
+          ENTREGAR EN:
+        </div>
+
+        <div className="h-[55px] overflow-hidden p-2 text-[11px] leading-tight">
+          <div className="truncate font-semibold">{remision.destino || "-"}</div>
+
+          <div className="truncate">{domicilioEntrega(remision)}</div>
+
+          {(remision.contacto_entrega || remision.telefono_entrega) && (
+            <div className="truncate">
+              {remision.contacto_entrega
+                ? `Contacto: ${remision.contacto_entrega}`
+                : ""}
+              {remision.telefono_entrega
+                ? ` Tel: ${remision.telefono_entrega}`
+                : ""}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="mt-3 overflow-hidden rounded-xl border-2 border-blue-800">
         <table className="w-full border-collapse text-sm">
@@ -361,6 +413,9 @@ function RemisionImpresa({
           <tbody>
             {remision.remision_items.map((item) => {
               const producto = obtenerProducto(item.productos);
+              const ptId =
+                item.produccion_finished_good_id ||
+                remision.produccion_finished_good_id;
 
               return (
                 <tr key={item.id} className="align-top">
@@ -388,10 +443,16 @@ function RemisionImpresa({
                       </div>
 
                       <div>
-                        <span className="font-bold">OP:</span>{" "}
-                        {remision.orden_produccion_folio || "-"}
+                        <span className="font-bold">OP:</span> {opFolio}
                       </div>
                     </div>
+
+                    {ptId ? (
+                      <div className="mt-1 text-xs text-slate-600">
+                        <span className="font-bold">PT Producción:</span>{" "}
+                        {ptId.slice(0, 8)}...
+                      </div>
+                    ) : null}
 
                     {item.descripcion_extra && (
                       <div className="mt-2 text-xs text-slate-600">
@@ -516,6 +577,14 @@ function parseFecha(fecha: string | null) {
   }
 
   const date = new Date(`${fecha}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return {
+      dia: "",
+      mes: "",
+      anio: "",
+    };
+  }
 
   return {
     dia: String(date.getDate()).padStart(2, "0"),

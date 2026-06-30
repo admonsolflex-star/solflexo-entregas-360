@@ -9,19 +9,19 @@ import { canCreate } from "@/lib/auth/permissions";
 
 type ClienteRelacion =
   | {
-      nombre: string;
+      nombre: string | null;
     }[]
   | {
-      nombre: string;
+      nombre: string | null;
     }
   | null;
 
 type Producto = {
   id: string;
-  codigo_producto: string;
-  nombre: string;
+  codigo_producto: string | null;
+  nombre: string | null;
   tipo_producto: string | null;
-  unidad_principal: string;
+  unidad_principal: string | null;
   activo: boolean;
   origen: string | null;
   cliente_id: string | null;
@@ -83,21 +83,31 @@ export default function ProductosPage() {
     return producto.clientes?.nombre || "-";
   }
 
-  function origenTexto(origen: string | null) {
-    if (origen === "produccion") {
-      return "Producción 360";
-    }
+  function esOrigenProduccion(origen: string | null) {
+  const valor = String(origen || "").toUpperCase();
 
-    return "Manual";
+  return (
+    valor === "PRODUCCION" ||
+    valor === "PRODUCCION_360" ||
+    valor === "PRODUCCIÓN 360"
+  );
+}
+
+function origenTexto(origen: string | null) {
+  if (esOrigenProduccion(origen)) {
+    return "Producción 360";
   }
 
-  function origenClase(origen: string | null) {
-    if (origen === "produccion") {
-      return "bg-blue-50 text-blue-700";
-    }
+  return "Manual";
+}
 
-    return "bg-slate-100 text-slate-700";
+function origenClase(origen: string | null) {
+  if (esOrigenProduccion(origen)) {
+    return "bg-blue-50 text-blue-700";
   }
+
+  return "bg-slate-100 text-slate-700";
+}
 
   function activoClase(activo: boolean) {
     if (activo) {

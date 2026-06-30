@@ -55,7 +55,7 @@ export default function EntregasPage() {
         )
       `
       )
-      .in("estado", ["cargado", "en_ruta", "regresado"])
+      .in("estado", ["cargado", "en_ruta", "regresado", "cerrado"])
       .order("created_at", { ascending: false });
 
     if (error) {
