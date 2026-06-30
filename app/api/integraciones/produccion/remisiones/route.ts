@@ -79,10 +79,7 @@ async function findOrCreateCliente(supabase: any, body: any) {
     cleanText(body.customer_business_name) ||
     "Cliente sin nombre";
 
-  const customerRfc =
-    upperText(body.customer_rfc) ||
-    upperText(body.rfc) ||
-    null;
+  const customerRfc = upperText(body.customer_rfc) || upperText(body.rfc) || null;
 
   const customerPhone =
     cleanText(body.customer_phone) ||
@@ -111,7 +108,7 @@ async function findOrCreateCliente(supabase: any, body: any) {
   }
 
   if (existingCliente) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("clientes")
       .update({
         nombre: customerName,
@@ -121,6 +118,10 @@ async function findOrCreateCliente(supabase: any, body: any) {
         activo: true,
       })
       .eq("id", existingCliente.id);
+
+    if (updateError) {
+      throw new Error(`Error actualizando cliente: ${updateError.message}`);
+    }
 
     return existingCliente;
   }
@@ -219,20 +220,22 @@ async function findOrCreateProducto(supabase: any, body: any, clienteId: string)
   }
 
   if (existingProducto) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("productos")
       .update({
         nombre: productName,
         tipo_producto: cleanText(body.product_type) || null,
         unidad_principal:
-          upperText(body.product_unit) ||
-          upperText(body.unit) ||
-          "PIEZAS",
+          upperText(body.product_unit) || upperText(body.unit) || "PIEZAS",
         activo: true,
         cliente_id: clienteId,
         produccion_customer_id: produccionClienteId || null,
       })
       .eq("id", existingProducto.id);
+
+    if (updateError) {
+      throw new Error(`Error actualizando producto: ${updateError.message}`);
+    }
 
     return existingProducto;
   }
@@ -249,9 +252,7 @@ async function findOrCreateProducto(supabase: any, body: any, clienteId: string)
       nombre: productName,
       tipo_producto: cleanText(body.product_type) || null,
       unidad_principal:
-        upperText(body.product_unit) ||
-        upperText(body.unit) ||
-        "PIEZAS",
+        upperText(body.product_unit) || upperText(body.unit) || "PIEZAS",
       activo: true,
       produccion_producto_id: produccionProductoId,
       produccion_customer_id: produccionClienteId || null,
@@ -339,7 +340,7 @@ async function findOrCreateDireccion(
   }
 
   if (existingDireccion) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("cliente_direcciones_entrega")
       .update({
         cliente_id: clienteId,
@@ -372,6 +373,10 @@ async function findOrCreateDireccion(
         activo: true,
       })
       .eq("id", existingDireccion.id);
+
+    if (updateError) {
+      throw new Error(`Error actualizando dirección: ${updateError.message}`);
+    }
 
     return existingDireccion;
   }
@@ -433,7 +438,7 @@ export async function GET() {
     service: "Solflexo Entregas 360",
     endpoint: "integracion-produccion-remisiones",
     method: "POST",
-    mode: "AUTO_CREATE_CLIENT_PRODUCT_ADDRESS",
+    mode: "AUTO_CREATE_CLIENT_PRODUCT_ADDRESS_BY_FINISHED_GOOD",
   });
 }
 
@@ -538,6 +543,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!finishedGoodId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Falta finished_good_id. La integración debe controlar duplicados por producto terminado.",
+        },
+        { status: 400 }
+      );
+    }
+
     if (cajas <= 0 && bobinas <= 0 && kilos <= 0 && piezas <= 0) {
       return NextResponse.json(
         {
@@ -553,7 +569,7 @@ export async function POST(request: NextRequest) {
       await supabase
         .from("remisiones")
         .select("id, folio, estado")
-        .eq("produccion_order_id", productionOrderId)
+        .eq("produccion_finished_good_id", finishedGoodId)
         .maybeSingle();
 
     if (existingRemisionError) {
@@ -570,7 +586,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         duplicated: true,
-        message: "La OP ya tiene remisión creada en Entregas 360.",
+        message:
+          "Este producto terminado ya tiene remisión creada en Entregas 360.",
         remision_id: existingRemision.id,
         remision_folio: existingRemision.folio,
         estado: existingRemision.estado,
@@ -608,7 +625,7 @@ export async function POST(request: NextRequest) {
 
         produccion_order_id: productionOrderId,
         produccion_order_folio: productionOrderFolio,
-        produccion_finished_good_id: finishedGoodId || null,
+        produccion_finished_good_id: finishedGoodId,
         integration_source: "PRODUCCION_360",
         integration_payload: body,
         integration_created_at: new Date().toISOString(),
@@ -636,18 +653,17 @@ export async function POST(request: NextRequest) {
       descripcion_extra:
         referenciasEntrega ||
         `Producto terminado generado desde OP ${productionOrderFolio}.`,
-      produccion_product_id: productionProductId || null,
-      produccion_finished_good_id: finishedGoodId || null,
+      produccion_product_id: productionProductId,
+      produccion_finished_good_id: finishedGoodId,
     });
 
     if (itemError) {
+      await supabase.from("remisiones").delete().eq("id", remisionCreada.id);
+
       return NextResponse.json(
         {
           ok: false,
-          error: `Se creó la remisión, pero falló la partida: ${itemError.message}`,
-          remision_id: remisionCreada.id,
-          remision_folio: remisionCreada.folio,
-          estado: remisionCreada.estado,
+          error: `No se pudo crear la partida de la remisión: ${itemError.message}`,
         },
         { status: 500 }
       );
